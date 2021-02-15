@@ -1,4 +1,5 @@
 import time
+import numpy as np
 from absl import app, flags, logging
 from absl.flags import FLAGS
 import cv2
@@ -15,7 +16,7 @@ flags.DEFINE_string('weights', './checkpoints/yolov3.tf',
                     'path to weights file')
 flags.DEFINE_boolean('tiny', False, 'yolov3 or yolov3-tiny')
 flags.DEFINE_integer('size', 416, 'resize images to')
-flags.DEFINE_string('video', './data/video.mp4',
+flags.DEFINE_string('video', './data/video/Town Square_1.mp4',
                     'path to video file or number for webcam)')
 flags.DEFINE_string('output', None, 'path to output video')
 flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
@@ -55,13 +56,39 @@ def main(_argv):
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
-    while True:
-        _, img = vid.read()
+    segment_frame_num = 0
+    segment_id = 0
+    segment_frame = []
+    num_of_obeject  = []
+    segment_scores = []
+    segment_nums = []
+    key_frame = []
+    image_id = 0
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter('./data/video/town_summary.avi',fourcc, 20.0, (240,120))
 
+    while True:
+        if segment_frame_num == 20:
+            key_num = np.argmax(segment_nums)
+            print(key_num)
+            #cv2.imwrite("./data/images/{}.jpg".format(image_id),segment_frame[key_num])
+            out.write(segment_frame[key_num])
+            key_frame.append(segment_frame[key_num])
+            segment_scores = []
+            segment_frame = []
+            segment_nums = []
+            segment_frame_num = 0
+            image_id += 1
+
+        _, img = vid.read()
+        img = cv2.resize(img,(640,480))
+        segment_frame.append(img)
+        segment_frame_num += 1
+   
         if img is None:
             logging.warning("Empty Frame")
             time.sleep(0.1)
-            continue
+            break
 
         img_in = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_in = tf.expand_dims(img_in, 0)
@@ -69,19 +96,21 @@ def main(_argv):
 
         t1 = time.time()
         boxes, scores, classes, nums = yolo.predict(img_in)
+        segment_scores.append(scores)
+        segment_nums.append(nums)
         t2 = time.time()
         times.append(t2-t1)
         times = times[-20:]
 
         img = draw_outputs(img, (boxes, scores, classes, nums), class_names)
-        img = cv2.putText(img, "Time: {:.2f}ms".format(sum(times)/len(times)*1000), (0, 30),
+        img = cv2.putText(img, "Time: {:.2f}ms,num :{}".format(sum(times)/len(times)*1000,nums), (0, 30),
                           cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
         if FLAGS.output:
             out.write(img)
         cv2.imshow('output', img)
         if cv2.waitKey(1) == ord('q'):
             break
-
+    
     cv2.destroyAllWindows()
 
 
